@@ -7,6 +7,7 @@ import com.alibaba.nacos.api.naming.NamingService;
 import com.alibaba.nacos.api.naming.listener.NamingEvent;
 import org.mengyun.tcctransaction.discovery.registry.AbstractRegistryService;
 import org.mengyun.tcctransaction.discovery.registry.RegistryConfig;
+import org.mengyun.tcctransaction.discovery.registry.RegistryStatus;
 import org.mengyun.tcctransaction.exception.RegistryException;
 import org.mengyun.tcctransaction.utils.NetUtils;
 import org.slf4j.Logger;
@@ -48,6 +49,43 @@ public class NacosRegistryServiceImpl extends AbstractRegistryService {
             namingService = NacosFactory.createNamingService(createProperties);
         } catch (Exception e) {
             throw new RegistryException("Cant connect to the nacos", e);
+        }
+    }
+
+    @Override
+    public RegistryStatus queryServerRegistryStatus() {
+        String addressString = NetUtils.parseSocketAddress(address);
+        String ip = addressString.substring(0, addressString.indexOf(':'));
+        int port = address.getPort();
+        try {
+            boolean exist = namingService.getAllInstances(properties.getServiceName(), properties.getGroup(), Collections.singletonList(getClusterName())).stream()
+                    .anyMatch(instance -> ip.equals(instance.getIp()) && port == instance.getPort());
+            return exist ? RegistryStatus.ONLINE : RegistryStatus.OFFLINE;
+        } catch (NacosException e) {
+            logger.warn("failed to query server status", e);
+            return RegistryStatus.UNKNOWN;
+        }
+    }
+
+    @Override
+    public void serverOnline() {
+        String addressString = NetUtils.parseSocketAddress(address);
+        int index = addressString.indexOf(':');
+        try {
+            namingService.registerInstance(properties.getServiceName(), properties.getGroup(), addressString.substring(0, index), address.getPort(), getClusterName());
+        } catch (NacosException e) {
+            logger.warn("failed to online server and would retry in the background", e);
+        }
+    }
+
+    @Override
+    public void serverOffline() {
+        String addressString = NetUtils.parseSocketAddress(address);
+        int index = addressString.indexOf(':');
+        try {
+            namingService.deregisterInstance(properties.getServiceName(), properties.getGroup(), addressString.substring(0, index), address.getPort(), getClusterName());
+        } catch (NacosException e) {
+            logger.warn("failed to offline server and would retry in the background", e);
         }
     }
 

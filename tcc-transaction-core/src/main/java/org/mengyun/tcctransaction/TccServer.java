@@ -238,6 +238,10 @@ public class TccServer implements TccService {
         return recoveryExecutor;
     }
 
+    public List<RegistryService> getRegistryServices() {
+        return registryServices;
+    }
+
     public StatsManager getStatsManager() {
         return statsManager;
     }

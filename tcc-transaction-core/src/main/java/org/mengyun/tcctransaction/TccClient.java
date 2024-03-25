@@ -11,6 +11,7 @@ import org.mengyun.tcctransaction.discovery.registry.RegistryFactory;
 import org.mengyun.tcctransaction.discovery.registry.RegistryRole;
 import org.mengyun.tcctransaction.discovery.registry.RegistryService;
 import org.mengyun.tcctransaction.exception.SystemException;
+import org.mengyun.tcctransaction.observe.ObservableCenter;
 import org.mengyun.tcctransaction.processor.ClientRecoveryExecutor;
 import org.mengyun.tcctransaction.processor.ClientRecoveryProcessor;
 import org.mengyun.tcctransaction.recovery.RecoveryExecutor;
@@ -201,6 +202,8 @@ public class TccClient implements TccService {
     @Override
     @PreDestroy
     public void shutdown() throws Exception {
+
+        ObservableCenter.INSTANCE.close();
 
         if (this.clientConfig.getStorageType() == StorageType.REMOTING) {
             this.remotingClient.shutdown();

@@ -1,6 +1,8 @@
 package org.mengyun.tcctransaction.discovery.registry;
 
 import org.mengyun.tcctransaction.exception.RegistryException;
+import org.mengyun.tcctransaction.observe.ObservableCenter;
+import org.mengyun.tcctransaction.observe.ObservableType;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
@@ -63,6 +65,7 @@ public abstract class AbstractRegistryService implements RegistryService {
             this.serverAddressesForDashboard = address;
         } else {
             this.serverAddresses = address;
+            ObservableCenter.INSTANCE.publish(ObservableType.REGISTRY, null);
         }
     }
 

@@ -13,6 +13,7 @@ import org.mengyun.tcctransaction.utils.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.netflix.ribbon.SpringClientFactory;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,9 @@ public class TccServerTransactionServiceImpl implements TransactionService, Stat
     private static final String REQUEST_METHOD_TRANSACTION_DETAIL = "transaction/detail";
 
     private static final String REQUEST_METHOD_STATS = "server/stats";
+
+    @Value("${feign.path}")
+    private String serverContextPath;
 
     @Autowired
     private TccServerFeignClient tccServerFeignClient;
@@ -80,7 +84,7 @@ public class TccServerTransactionServiceImpl implements TransactionService, Stat
             String detailRequestUrl = "http://"
                     .concat(server.getHostPort())
                     .concat("/")
-                    .concat(DashboardConstant.TCC_SERVER_GROUP)
+                    .concat(serverContextPath)
                     .concat("/")
                     .concat(REQUEST_METHOD_TRANSACTION_DETAIL);
             try {

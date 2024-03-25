@@ -3,6 +3,8 @@ package org.mengyun.tcctransaction.discovery.registry.direct;
 import org.apache.commons.lang3.StringUtils;
 import org.mengyun.tcctransaction.discovery.registry.AbstractRegistryService;
 import org.mengyun.tcctransaction.discovery.registry.RegistryConfig;
+import org.mengyun.tcctransaction.discovery.registry.RegistryStatus;
+import org.mengyun.tcctransaction.exception.RegistryException;
 
 import java.net.InetSocketAddress;
 import java.util.Arrays;
@@ -23,6 +25,21 @@ public class DirectRegistryServiceImpl extends AbstractRegistryService {
     @Override
     protected void doRegister(InetSocketAddress address, InetSocketAddress addressForDashboard) {
         //do nothing
+    }
+
+    @Override
+    public RegistryStatus queryServerRegistryStatus() {
+        return RegistryStatus.ONLINE;
+    }
+
+    @Override
+    public void serverOnline() {
+        //do nothing
+    }
+
+    @Override
+    public void serverOffline() {
+        throw new RegistryException(new UnsupportedOperationException("serverOffline"));
     }
 
     @Override

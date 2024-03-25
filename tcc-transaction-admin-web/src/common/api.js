@@ -124,6 +124,25 @@ export function taskModifyCron(params) {
     });
 }
 
+export function registryQueryStatus(){
+  return http.get("/tcc-transaction-dashboard/api/registry/queryStatus")
+}
+
+export function registryOnline(ip, port) {
+  return http.post("/tcc-transaction-dashboard/api/registry/online",
+      {
+        ip: ip,
+        port: port
+      });
+}
+
+export function registryOffline(ip, port) {
+  return http.post("/tcc-transaction-dashboard/api/registry/offline",
+      {
+        ip: ip,
+        port: port
+      });
+}
 
 export function userLogin(params) {
   return http.post("/tcc-transaction-dashboard/api/user/login", {

@@ -9,6 +9,7 @@ import Welcome from './pages/tcc/welcome/index';
 import Domain from './pages/tcc/domain/index';
 import Transaction from './pages/tcc/transaction/index';
 import Task from "./pages/tcc/task/index";
+import Registry from "./pages/tcc/registry/index";
 
 import store from './store';
 import TccLayout from "./layout/TccLayout";
@@ -25,6 +26,7 @@ function App(props) {
               <Route path="/domain" component={Domain}></Route>
               <Route path="/transaction" component={Transaction}></Route>
               <Route path="/task" component={Task}></Route>
+              <Route path="/registry" component={Registry}></Route>
             </>
           }>
           </TccLayout>
