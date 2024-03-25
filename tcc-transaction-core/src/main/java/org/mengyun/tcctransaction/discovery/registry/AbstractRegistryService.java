@@ -1,8 +1,8 @@
 package org.mengyun.tcctransaction.discovery.registry;
 
 import org.mengyun.tcctransaction.exception.RegistryException;
-import org.mengyun.tcctransaction.observe.ObservableCenter;
 import org.mengyun.tcctransaction.observe.ObservableType;
+import org.mengyun.tcctransaction.observe.ObservableCenter;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;

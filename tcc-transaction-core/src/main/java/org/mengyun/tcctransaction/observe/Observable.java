@@ -1,6 +1,5 @@
 package org.mengyun.tcctransaction.observe;
 
-
 import java.util.Set;
 
 /**
