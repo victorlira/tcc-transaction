@@ -94,8 +94,11 @@ public class ZookeeperInstance {
     }
 
     public RegistryStatus queryServerRegistryStatus() {
+        if (!connected) {
+            return RegistryStatus.UNKNOWN;
+        }
         try {
-            if (connected && curator.checkExists().forPath(nodePath) != null) {
+            if (curator.checkExists().forPath(nodePath) != null) {
                 return RegistryStatus.ONLINE;
             } else {
                 return RegistryStatus.OFFLINE;
