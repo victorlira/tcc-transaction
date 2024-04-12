@@ -86,15 +86,19 @@ public class ReusableConnectionProvider implements ConnectionProvider {
     @Override
     public void shutdown() throws SQLException {
         logger.debug("one user quit, current inuse counter:{}", inuseCounter.decrementAndGet());
-        if (inuseCounter.get() == 0 && instance != null) {
-            synchronized (ReusableConnectionProvider.class) {
-                if (inuseCounter.get() == 0 && instance != null) {
-                    logger.info("no user in use,close the dataSource");
-                    instance.close();
-                    instance = null;
-                }
-            }
-        }
+
+        // When the server goes offline, the inuseCounter will be reduced to zero.
+        // In this case, it is not wise to create and destroy the pool frequently
+
+        //if (inuseCounter.get() == 0 && instance != null) {
+        //    synchronized (ReusableConnectionProvider.class) {
+        //        if (inuseCounter.get() == 0 && instance != null) {
+        //            logger.info("no user in use,close the dataSource");
+        //            instance.close();
+        //            instance = null;
+        //        }
+        //    }
+        //}
     }
 
     /**

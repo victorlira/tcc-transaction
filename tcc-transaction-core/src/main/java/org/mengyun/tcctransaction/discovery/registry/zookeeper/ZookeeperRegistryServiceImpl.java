@@ -5,7 +5,6 @@ import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.api.ACLProvider;
 import org.apache.curator.framework.recipes.cache.PathChildrenCache;
-import org.apache.curator.framework.state.ConnectionState;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -13,8 +12,8 @@ import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.data.ACL;
 import org.mengyun.tcctransaction.discovery.registry.AbstractRegistryService;
 import org.mengyun.tcctransaction.discovery.registry.RegistryConfig;
+import org.mengyun.tcctransaction.discovery.registry.RegistryStatus;
 import org.mengyun.tcctransaction.exception.RegistryException;
-import org.mengyun.tcctransaction.utils.NetUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,7 +22,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author Nervose.Wu
@@ -39,9 +37,9 @@ public class ZookeeperRegistryServiceImpl extends AbstractRegistryService {
 
     private ZookeeperRegistryProperties properties;
 
-    private String targetPath;
+    private String parentPath;
 
-    private String targetPathForDashboard;
+    private String parentPathForDashboard;
 
     private ZookeeperInstance instance;
 
@@ -49,9 +47,9 @@ public class ZookeeperRegistryServiceImpl extends AbstractRegistryService {
 
     public ZookeeperRegistryServiceImpl(RegistryConfig registryConfig) {
         setClusterName(registryConfig.getClusterName());
-        this.targetPath = BASE_PATH + getClusterName();
-        this.targetPathForDashboard = BASE_PATH_FOR_DASHBOARD + getClusterName();
         this.properties = registryConfig.getZookeeperRegistryProperties();
+        this.parentPath = BASE_PATH + getClusterName();
+        this.parentPathForDashboard = BASE_PATH_FOR_DASHBOARD + getClusterName();
         this.instance = new ZookeeperInstance(properties.getConnectString(), properties.getDigest(), buildCurator(false));
         if (!StringUtils.isEmpty(properties.getBackupConnectString()) && !Objects.equals(properties.getConnectString(), properties.getBackupConnectString())) {
             this.backupInstance = new ZookeeperInstance(properties.getBackupConnectString(), properties.getBackupDigest(), buildCurator(true));
@@ -93,73 +91,41 @@ public class ZookeeperRegistryServiceImpl extends AbstractRegistryService {
         }
     }
 
-    private void start(ZookeeperInstance target) {
-        CuratorFramework curator = target.getCurator();
-        curator.start();
-        boolean connected = false;
-        try {
-            connected = curator.blockUntilConnected(properties.getConnectTimeout(), TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            //ignore
+    @Override
+    public RegistryStatus queryServerRegistryStatus() {
+        RegistryStatus status = instance.queryServerRegistryStatus();
+        if (backupInstance != null) {
+            status = RegistryStatus.combine(status, backupInstance.queryServerRegistryStatus());
         }
-        if (!connected) {
-            logger.error("Cant connect to the zookeeper {}", target.getConnectString());
+        return status;
+    }
+
+    @Override
+    public void serverOnline() {
+        instance.serverOnline();
+        if (backupInstance != null) {
+            backupInstance.serverOnline();
         }
     }
 
     @Override
-    protected void doRegister(InetSocketAddress address, InetSocketAddress addressForDashboard) {
-        doRegister(address, addressForDashboard, instance);
+    public void serverOffline() {
+        instance.serverOffline();
         if (backupInstance != null) {
-            doRegister(address, addressForDashboard, backupInstance);
+            backupInstance.serverOffline();
         }
     }
 
-    private void doRegister(InetSocketAddress address, InetSocketAddress addressForDashboard, ZookeeperInstance target) {
-        CuratorFramework curator = target.getCurator();
+    private void start(ZookeeperInstance target) {
+        target.start(properties.getConnectTimeout());
+    }
 
-        try {
-            createParentNode(curator, false);
-            target.setRegisteredPath(curator.create()
-                    .withMode(CreateMode.EPHEMERAL_SEQUENTIAL)
-                    .forPath(targetPath + "/node", NetUtils.parseSocketAddress(address).getBytes()));
-
-            createParentNode(curator, true);
-            target.setRegisteredPathForDashboard(curator.create()
-                    .withMode(CreateMode.EPHEMERAL_SEQUENTIAL)
-                    .forPath(targetPathForDashboard + "/node", NetUtils.parseSocketAddress(addressForDashboard).getBytes()));
-            logger.info("Registered with zookeeper. {},{}", address, addressForDashboard);
-        } catch (Exception e) {
-            logger.error("Failed to register with zookeeper", e);
+    @Override
+    protected void doRegister(InetSocketAddress address, InetSocketAddress addressForDashboard) throws InterruptedException {
+        instance.register(parentPath, address, parentPathForDashboard, addressForDashboard);
+        if (backupInstance != null) {
+            backupInstance.register(parentPath, address, parentPathForDashboard, addressForDashboard);
         }
-
-        curator.getConnectionStateListenable().addListener((client, newState) -> {
-            if (newState == ConnectionState.RECONNECTED || newState == ConnectionState.CONNECTED) {
-                try {
-                    createParentNode(curator, false);
-                    if (target.getRegisteredPath() == null || curator.checkExists().forPath(target.getRegisteredPath()) == null) {
-                        target.setRegisteredPath(curator.create()
-                                .withMode(CreateMode.EPHEMERAL_SEQUENTIAL)
-                                .forPath(targetPath + "/node", NetUtils.parseSocketAddress(address).getBytes()));
-                    }
-
-                    createParentNode(curator, true);
-                    if (target.getRegisteredPathForDashboard() == null || curator.checkExists().forPath(target.getRegisteredPathForDashboard()) == null) {
-                        target.setRegisteredPathForDashboard(curator.create()
-                                .withMode(CreateMode.EPHEMERAL_SEQUENTIAL)
-                                .forPath(targetPathForDashboard + "/node", NetUtils.parseSocketAddress(addressForDashboard).getBytes()));
-                    }
-
-                    if (newState == ConnectionState.CONNECTED) {
-                        logger.info("Registered with zookeeper. {},{}", address, addressForDashboard);
-                    } else {
-                        logger.info("Re-registered with zookeeper");
-                    }
-                } catch (Exception e) {
-                    logger.error("Failed to register with zookeeper", e);
-                }
-            }
-        });
     }
 
     @Override
@@ -173,11 +139,14 @@ public class ZookeeperRegistryServiceImpl extends AbstractRegistryService {
     private void doSubscribe(ZookeeperInstance target, boolean addressForDashboard) {
         try {
             createParentNode(target.getCurator(), addressForDashboard);
-        } catch (Exception e) {
-            //ignore
+        } catch (Exception ignore) {
+            /*
+             * In most cases, the parent node will be created by the server in advance, so we can ignore this exception.
+             * However, if the parent node does not exist, the subscription will become invalid even if the zookeeper is restored.
+             */
         }
 
-        String path = addressForDashboard ? targetPathForDashboard : targetPath;
+        String path = addressForDashboard ? parentPathForDashboard : parentPath;
         PathChildrenCache pathChildrenCache = new PathChildrenCache(target.getCurator(), path, false);
         pathChildrenCache.getListenable().addListener((curator, pathChildrenCacheEvent) -> {
             switch (pathChildrenCacheEvent.getType()) {
@@ -208,33 +177,14 @@ public class ZookeeperRegistryServiceImpl extends AbstractRegistryService {
 
     @Override
     public void close() {
-        close(instance);
+        instance.close();
         if (backupInstance != null) {
-            close(backupInstance);
-        }
-    }
-
-    private void close(ZookeeperInstance target) {
-        // manually remove ephemeral paths to avoid delays
-        try {
-            if(StringUtils.isNotEmpty(target.getRegisteredPath())){
-                target.getCurator().delete().forPath(target.getRegisteredPath());
-            }
-            if(StringUtils.isNotEmpty(target.getRegisteredPathForDashboard())){
-                target.getCurator().delete().forPath(target.getRegisteredPathForDashboard());
-            }
-        } catch (Exception e) {
-            //ignore
-        }
-        try {
-            target.getCurator().close();
-        } catch (Exception e) {
-            //ignore
+            backupInstance.close();
         }
     }
 
     private void updateServiceList(CuratorFramework curator, boolean addressForDashboard) throws Exception {
-        String path = addressForDashboard ? targetPathForDashboard : targetPath;
+        String path = addressForDashboard ? parentPathForDashboard : parentPath;
         List<String> nodePaths = curator.getChildren().forPath(path);
         List<String> newServerAddresses = new ArrayList<>();
         for (String nodePath : nodePaths) {
@@ -244,7 +194,7 @@ public class ZookeeperRegistryServiceImpl extends AbstractRegistryService {
     }
 
     private void createParentNode(CuratorFramework target, boolean addressForDashboard) throws Exception {
-        String path = addressForDashboard ? targetPathForDashboard : targetPath;
+        String path = addressForDashboard ? parentPathForDashboard : parentPath;
         if (target.checkExists().forPath(path) == null) {
             try {
                 target.create()

@@ -13,6 +13,12 @@ public interface RegistryService {
 
     void register(InetSocketAddress address, InetSocketAddress addressForDashboard);
 
+    RegistryStatus queryServerRegistryStatus();
+
+    void serverOnline();
+
+    void serverOffline();
+
     void subscribe(boolean addressForDashboard);
 
     List<String> lookup(boolean addressForDashboard);

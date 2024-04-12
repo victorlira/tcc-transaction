@@ -15,9 +15,13 @@ import io.netty.util.concurrent.DefaultEventExecutorGroup;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPoolConfig;
 import org.mengyun.tcctransaction.exception.SystemException;
+import org.mengyun.tcctransaction.observe.RegistryObservable;
+import org.mengyun.tcctransaction.observe.ObservableType;
+import org.mengyun.tcctransaction.observe.ObservableCenter;
 import org.mengyun.tcctransaction.remoting.RemotingClient;
 import org.mengyun.tcctransaction.remoting.RequestProcessor;
 import org.mengyun.tcctransaction.remoting.codec.NettyDecoder;
@@ -31,8 +35,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.SocketAddress;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ThreadFactory;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class NettyRemotingClient extends AbstractNettyRemoting implements RemotingClient<ChannelHandlerContext> {
@@ -55,6 +62,12 @@ public class NettyRemotingClient extends AbstractNettyRemoting implements Remoti
 
     private ServerAddressLoader serverAddressLoader;
 
+    private ScheduledExecutorService evictChannelExecutorService;
+
+    private final long evictChannelIntervalSeconds = 15L;
+
+    private final long minBorrowDifferenceInMilliseconds = 1000L;
+
     public NettyRemotingClient(RemotingCommandSerializer serializer, NettyClientConfig nettyClientConfig, ServerAddressLoader serverAddressLoader) {
 
         this.nettyClientConfig = nettyClientConfig;
@@ -64,6 +77,8 @@ public class NettyRemotingClient extends AbstractNettyRemoting implements Remoti
         this.serverAddressLoader = serverAddressLoader;
 
         this.nettyClientKeyPool = new GenericKeyedObjectPool<>(new NettyPooledFactory(this.bootstrap, nettyClientConfig, this.serverAddressLoader), getChannelPoolConfig(nettyClientConfig));
+
+        this.evictChannelExecutorService = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r,"NettyClientEvictChannelWorkerThread"));
 
         this.eventExecutorGroup = new DefaultEventExecutorGroup(nettyClientConfig.getWorkerThreadSize(),
                 new ThreadFactory() {
@@ -147,12 +162,27 @@ public class NettyRemotingClient extends AbstractNettyRemoting implements Remoti
         if (nettyClientConfig.getSocketRcvBufSize() > 0) {
             this.bootstrap.option(ChannelOption.SO_RCVBUF, nettyClientConfig.getSocketRcvBufSize());
         }
+
+        this.evictChannelExecutorService.scheduleWithFixedDelay(this::evictChannel, evictChannelIntervalSeconds, evictChannelIntervalSeconds, TimeUnit.SECONDS);
+        ObservableCenter.INSTANCE.registerObservableIfAbsent(ObservableType.REGISTRY, RegistryObservable::new);
+        ObservableCenter.INSTANCE.registerObserver(ObservableType.REGISTRY,
+                each -> {
+                    try {
+                        this.evictChannelExecutorService.schedule(this::evictChannel, minBorrowDifferenceInMilliseconds, TimeUnit.MILLISECONDS);
+                    } catch (RejectedExecutionException re) {
+                        logger.warn("too many registry messages and task is rejected");
+                    }
+                });
     }
 
     @Override
     public void shutdown() {
 
         logger.info("shutdown netty remoting client, this may take some seconds ...");
+
+        if (this.evictChannelExecutorService != null) {
+            this.evictChannelExecutorService.shutdown();
+        }
 
         this.workEventLoopGroup.shutdownGracefully().syncUninterruptibly();
 
@@ -333,6 +363,22 @@ public class NettyRemotingClient extends AbstractNettyRemoting implements Remoti
         return config;
     }
 
+    private void evictChannel() {
+        try {
+            long current = System.currentTimeMillis();
+            Map<String, List<DefaultPooledObjectInfo>> channelInfos = nettyClientKeyPool.listAllObjects();
+            Set<String> address = new HashSet<>(serverAddressLoader.getAllAvailableAddresses());
+            for (Map.Entry<String, List<DefaultPooledObjectInfo>> entry : channelInfos.entrySet()) {
+                if (!address.contains(entry.getKey())
+                        && entry.getValue().stream().noneMatch(each -> current - each.getLastBorrowTime() < minBorrowDifferenceInMilliseconds)) {
+                    nettyClientKeyPool.clear(entry.getKey());
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("execute evict channel task failed", e);
+        }
+    }
+
     class ProcessReadHandler extends SimpleChannelInboundHandler<RemotingCommand> {
 
         @Override
@@ -340,6 +386,4 @@ public class NettyRemotingClient extends AbstractNettyRemoting implements Remoti
             processMessageReceived(ctx, cmd);
         }
     }
-
-
 }

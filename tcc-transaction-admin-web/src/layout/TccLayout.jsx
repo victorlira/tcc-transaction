@@ -50,9 +50,14 @@ const Page = (props) => {
               </Menu.Item>
               {
                 isServerMode ?
-                  <Menu.Item key='task'>
-                    <Link to="/task">任务管理</Link>
-                  </Menu.Item>
+                  <>
+                    <Menu.Item key='task'>
+                      <Link to="/task">任务管理</Link>
+                    </Menu.Item>
+                    <Menu.Item key='registry'>
+                      <Link to="/registry">Server管理</Link>
+                    </Menu.Item>
+                  </>
                   :
                   <></>
               }

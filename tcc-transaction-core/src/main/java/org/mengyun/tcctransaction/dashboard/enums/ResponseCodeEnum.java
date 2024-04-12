@@ -37,7 +37,10 @@ public enum ResponseCodeEnum {
     TRANSACTION_DETAIL_NOT_EXIST(10501, "事件详情不存在"),
     TRANSACTION_CONTENT_VISUALIZE_ERROR(10502, "事件详情解析异常"),
     TRANSACTION_CONTENT_VISUALIZE_ERROR_WITH_MESSAGE(10502, "事件详情解析异常:%s"),
-    ;
+
+    // server上下线相关
+    SERVER_ONLINE_ERROR(10600, "tcc-server上线失败"),
+    SERVER_OFFLINE_ERROR(10601, "tcc-server下线失败");
 
     private int responseCode;
     private String responseMessage;
